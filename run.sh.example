@@ -1,0 +1,16 @@
+#!/bin/bash
+
+docker rm -f socksvpn > /dev/null 2>&1 || true
+docker run --name socksvpn -d \
+    --init \
+    --cap-add=NET_ADMIN \
+    --device=/dev/net/tun \
+    --device=/dev/ppp \
+    --log-opt max-size=10m \
+    --log-opt max-file=3 \
+    -p 1701:1701/udp \
+    -e SOCKS5_HOST=socks5_proxy \
+    -e SOCKS5_PORT=7890 \
+    -e VPN_USER=vpnuser \
+    -e VPN_PASS=your_password \
+    socksvpn
