@@ -12,10 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install tun2socks
 ARG TUN2SOCKS_VERSION=v2.6.0
-RUN curl -fsSL -o /tmp/tun2socks.zip \
-    "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION}/tun2socks-linux-amd64-v3.zip" \
+ARG TARGETARCH
+RUN ARCH=$TARGETARCH; SUFFIX=""; \
+    if [ "$ARCH" = "arm" ]; then ARCH=armv7; fi; \
+    if [ "$ARCH" = "amd64" ]; then SUFFIX="-v3"; fi; \
+    curl -fsSL -o /tmp/tun2socks.zip \
+    "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION}/tun2socks-linux-${ARCH}${SUFFIX}.zip" \
     && unzip /tmp/tun2socks.zip -d /usr/local/bin/ \
-    && mv /usr/local/bin/tun2socks-linux-amd64-v3 /usr/local/bin/tun2socks \
+    && mv /usr/local/bin/tun2socks-linux-${ARCH}${SUFFIX} /usr/local/bin/tun2socks \
     && chmod +x /usr/local/bin/tun2socks \
     && rm /tmp/tun2socks.zip
 

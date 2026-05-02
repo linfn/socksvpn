@@ -3,6 +3,7 @@
 docker rm -f socksvpn > /dev/null 2>&1 || true
 docker run --name socksvpn -d \
     --init \
+    --network your_network \
     --cap-add=NET_ADMIN \
     --device=/dev/net/tun \
     --device=/dev/ppp \
@@ -13,4 +14,4 @@ docker run --name socksvpn -d \
     -e SOCKS5_PORT=7890 \
     -e VPN_USER=vpnuser \
     -e VPN_PASS=your_password \
-    socksvpn
+    linfn/socksvpn
