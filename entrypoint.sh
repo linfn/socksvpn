@@ -9,11 +9,12 @@ SOCKS5_PORT="${SOCKS5_PORT:-1080}"
 VPN_USER="${VPN_USER:-vpnuser}"
 VPN_PASS="${VPN_PASS:-vpnpass}"
 VPN_SERVER_NAME="${VPN_SERVER_NAME:-l2tpd}"
-VPN_LOCAL_IP="${VPN_LOCAL_IP:-10.10.10.1}"
-VPN_IP_RANGE="${VPN_IP_RANGE:-10.10.10.10-10.10.10.100}"
+VPN_LOCAL_IP="${VPN_LOCAL_IP:-10.77.77.1}"
+VPN_IP_RANGE="${VPN_IP_RANGE:-10.77.77.10-10.77.77.100}"
 VPN_DNS1="${VPN_DNS1:-8.8.8.8}"
 VPN_DNS2="${VPN_DNS2:-8.8.4.4}"
 VPN_TABLE_ID="${VPN_TABLE_ID:-100}"
+TUN2SOCKS_LOGLEVEL="${TUN2SOCKS_LOGLEVEL:-warn}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS5 proxy: ${SOCKS5_HOST}:${SOCKS5_PORT}"
@@ -162,7 +163,7 @@ mkdir -p /var/run/xl2tpd
 # Start tun2socks
 # ============================================================
 echo "[+] Starting tun2socks..."
-tun2socks -device tun0 -proxy "socks5://${SOCKS5_HOST}:${SOCKS5_PORT}" -loglevel warn &
+tun2socks -device tun0 -proxy "socks5://${SOCKS5_HOST}:${SOCKS5_PORT}" -loglevel ${TUN2SOCKS_LOGLEVEL} &
 TUN2SOCKS_PID=$!
 
 # Wait for tun0 to appear
@@ -174,8 +175,11 @@ ip addr add 198.18.0.1/16 dev tun0 2>/dev/null || true
 iptables -A FORWARD -i ppp+ -o tun0 -j ACCEPT
 iptables -A FORWARD -i tun0 -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-# Configure NAT for tun0 outbound traffic
+# NAT: tun0 outbound (SOCKS proxy traffic)
 iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
+# NAT: VPN client to local/Docker network (so replies route back via container)
+VPN_SUBNET="${VPN_LOCAL_IP%.*}.0/24"
+iptables -t nat -A POSTROUTING -s ${VPN_SUBNET} -o eth0 -j MASQUERADE
 echo "[+] tun2socks started (PID: $TUN2SOCKS_PID), tun0 UP, NAT configured"
 
 # ============================================================
