@@ -15,8 +15,8 @@ docker run --name socksvpn -d \
     --log-opt max-size=10m \
     --log-opt max-file=3 \
     -p 1701:1701/udp \
-    -e SOCKS5_HOST=<socks5_proxy> \
-    -e SOCKS5_PORT=<7890> \
+    -e SOCKS_HOST=<socks_proxy> \
+    -e SOCKS_PORT=<7890> \
     -e VPN_USER=<vpnuser> \
     -e VPN_PASS=<your_password> \
     linfn/socksvpn

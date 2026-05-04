@@ -4,8 +4,8 @@ set -e
 # ============================================================
 # Configuration from environment variables
 # ============================================================
-SOCKS5_HOST="${SOCKS5_HOST:-127.0.0.1}"
-SOCKS5_PORT="${SOCKS5_PORT:-1080}"
+SOCKS_HOST="${SOCKS_HOST:-127.0.0.1}"
+SOCKS_PORT="${SOCKS_PORT:-1080}"
 VPN_USER="${VPN_USER:-vpnuser}"
 VPN_PASS="${VPN_PASS:-vpnpass}"
 VPN_SERVER_NAME="${VPN_SERVER_NAME:-l2tpd}"
@@ -18,7 +18,7 @@ TUN2SOCKS_LOGLEVEL="${TUN2SOCKS_LOGLEVEL:-warn}"
 IPSEC_PSK="${IPSEC_PSK:-}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
-echo "SOCKS5 proxy: ${SOCKS5_HOST}:${SOCKS5_PORT}"
+echo "SOCKS proxy: ${SOCKS_HOST}:${SOCKS_PORT}"
 echo "VPN user: ${VPN_USER}"
 echo "VPN IP range: ${VPN_IP_RANGE}"
 echo "VPN local IP: ${VPN_LOCAL_IP}"
@@ -233,7 +233,7 @@ fi
 # Start tun2socks
 # ============================================================
 echo "[+] Starting tun2socks..."
-tun2socks -device tun0 -proxy "socks5://${SOCKS5_HOST}:${SOCKS5_PORT}" -loglevel ${TUN2SOCKS_LOGLEVEL} &
+tun2socks -device tun0 -proxy "socks5://${SOCKS_HOST}:${SOCKS_PORT}" -loglevel ${TUN2SOCKS_LOGLEVEL} &
 TUN2SOCKS_PID=$!
 
 # Wait for tun0 to appear

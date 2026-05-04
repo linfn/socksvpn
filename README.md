@@ -22,8 +22,8 @@ docker run -d --name socksvpn \
     --device=/dev/net/tun \
     --device=/dev/ppp \
     -p 1701:1701/udp \
-    -e SOCKS5_HOST=<socks5_host> \
-    -e SOCKS5_PORT=<1080> \
+    -e SOCKS_HOST=<socks_host> \
+    -e SOCKS_PORT=<1080> \
     -e VPN_USER=<vpn_user> \
     -e VPN_PASS=<vpn_password> \
     linfn/socksvpn
@@ -41,8 +41,8 @@ docker run -d --name socksvpn \
     -p 1701:1701/udp \
     -p 500:500/udp \
     -p 4500:4500/udp \
-    -e SOCKS5_HOST=<socks5_host> \
-    -e SOCKS5_PORT=<1080> \
+    -e SOCKS_HOST=<socks_host> \
+    -e SOCKS_PORT=<1080> \
     -e VPN_USER=<vpn_user> \
     -e VPN_PASS=<vpn_password> \
     -e IPSEC_PSK=<pre_shared_key> \
@@ -53,8 +53,8 @@ docker run -d --name socksvpn \
 
 | Variable | Default | Description |
 |---|---|---|
-| `SOCKS5_HOST` | `127.0.0.1` | SOCKS5 proxy host |
-| `SOCKS5_PORT` | `1080` | SOCKS5 proxy port |
+| `SOCKS_HOST` | `127.0.0.1` | SOCKS proxy host |
+| `SOCKS_PORT` | `1080` | SOCKS proxy port |
 | `VPN_USER` | `vpnuser` | VPN username |
 | `VPN_PASS` | `vpnpass` | VPN password |
 | `VPN_SERVER_NAME` | `l2tpd` | PPP auth server name |
@@ -103,8 +103,8 @@ docker run -d --name socksvpn --network mynet \
     --device=/dev/net/tun \
     --device=/dev/ppp \
     -p 1701:1701/udp \
-    -e SOCKS5_HOST=socks5 \
-    -e SOCKS5_PORT=<1080> \
+    -e SOCKS_HOST=socks5 \
+    -e SOCKS_PORT=<1080> \
     -e VPN_USER=<vpn_user> \
     -e VPN_PASS=<vpn_password> \
     linfn/socksvpn
