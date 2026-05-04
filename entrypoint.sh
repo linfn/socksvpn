@@ -69,6 +69,8 @@ mtu 1400
 mru 1400
 nodefaultroute
 proxyarp
+lcp-echo-interval 30
+lcp-echo-failure 3
 connect-delay 5000
 debug
 logfd 1
