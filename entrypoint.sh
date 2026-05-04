@@ -108,9 +108,9 @@ iptables -t mangle -A PREROUTING -i "\$IFACE" -d 172.16.0.0/12 -j MARK --set-mar
 iptables -t mangle -A PREROUTING -i "\$IFACE" -d 192.168.0.0/16 -j MARK --set-mark 0x1337
 iptables -t mangle -A PREROUTING -i "\$IFACE" -d 127.0.0.0/8 -j MARK --set-mark 0x1337
 
-# Policy routing
-ip rule add fwmark 0x1337 table main
-ip rule add iif "\$IFACE" table $VPN_TABLE_ID
+# Policy routing (fwmark must have higher priority than iif)
+ip rule add fwmark 0x1337 table main priority 100
+ip rule add iif "\$IFACE" table $VPN_TABLE_ID priority 200
 ip route add default dev tun0 table $VPN_TABLE_ID
 
 echo "[ip-up] \$IFACE: local=\$LOCAL_IP remote=\$REMOTE_IP, routing configured"
