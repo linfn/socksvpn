@@ -1,11 +1,9 @@
 # socksvpn
 
-Plain L2TP VPN Server (no IPsec) that transparently forwards all client traffic through an external SOCKS5 proxy via [tun2socks](https://github.com/xjasonlyu/tun2socks).
-
-> **Note**: Only bare L2TP is supported. L2TP/IPsec is not supported — no IPsec daemon is included.
+L2TP VPN Server that transparently forwards all client traffic through an external SOCKS5 proxy via [tun2socks](https://github.com/xjasonlyu/tun2socks). Supports both plain L2TP and L2TP/IPsec modes.
 
 ```
-VPN Client ──L2TP──▶ xl2tpd ──ppp0──▶ Policy Routing ──tun0──▶ tun2socks ──▶ SOCKS5 Proxy ──▶ Internet
+VPN Client ──L2TP/IPsec──▶ strongSwan + xl2tpd ──ppp0──▶ Policy Routing ──tun0──▶ tun2socks ──▶ SOCKS5 Proxy ──▶ Internet
 ```
 
 - Public IP traffic exits through the SOCKS5 proxy
@@ -13,6 +11,8 @@ VPN Client ──L2TP──▶ xl2tpd ──ppp0──▶ Policy Routing ──t
 - DNS queries also go through the SOCKS5 proxy
 
 ## Quick Start
+
+### Plain L2TP (default)
 
 ```bash
 docker run -d --name socksvpn \
@@ -22,14 +22,32 @@ docker run -d --name socksvpn \
     --device=/dev/net/tun \
     --device=/dev/ppp \
     -p 1701:1701/udp \
-    -e SOCKS5_HOST=your_socks5_host \
-    -e SOCKS5_PORT=1080 \
-    -e VPN_USER=myuser \
-    -e VPN_PASS=mypassword \
+    -e SOCKS5_HOST=<socks5_host> \
+    -e SOCKS5_PORT=<1080> \
+    -e VPN_USER=<vpn_user> \
+    -e VPN_PASS=<vpn_password> \
     linfn/socksvpn
 ```
 
-Connect your VPN client to the host IP using **L2TP** (without IPsec) + CHAP authentication.
+### L2TP/IPsec
+
+```bash
+docker run -d --name socksvpn \
+    --init \
+    --restart=always \
+    --cap-add=NET_ADMIN \
+    --device=/dev/net/tun \
+    --device=/dev/ppp \
+    -p 1701:1701/udp \
+    -p 500:500/udp \
+    -p 4500:4500/udp \
+    -e SOCKS5_HOST=<socks5_host> \
+    -e SOCKS5_PORT=<1080> \
+    -e VPN_USER=<vpn_user> \
+    -e VPN_PASS=<vpn_password> \
+    -e IPSEC_PSK=<pre_shared_key> \
+    linfn/socksvpn
+```
 
 ## Environment Variables
 
@@ -46,6 +64,27 @@ Connect your VPN client to the host IP using **L2TP** (without IPsec) + CHAP aut
 | `VPN_DNS2` | `8.8.4.4` | Secondary DNS |
 | `VPN_TABLE_ID` | `100` | Policy routing table ID |
 | `TUN2SOCKS_LOGLEVEL` | `warn` | tun2socks log level (debug/info/warn/error) |
+| `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
+
+## Client Compatibility
+
+| Platform | Plain L2TP | L2TP/IPsec |
+|---|---|---|
+| macOS | Requires third-party app | Built-in (System Settings > VPN) |
+| iOS | Requires third-party app | Built-in (Settings > VPN) |
+| Windows | Manual config | Built-in |
+| Android | Requires third-party app | Built-in (Settings > VPN) |
+| Linux | xl2tpd + pppd | xl2tpd + strongSwan / NetworkManager |
+
+> **macOS and iOS** only support L2TP/IPsec via the built-in client. Set `IPSEC_PSK` to enable.
+
+## Ports
+
+| Port | Protocol | Required |
+|---|---|---|
+| 1701 | UDP (L2TP) | Always |
+| 500 | UDP (IKE) | IPsec only |
+| 4500 | UDP (NAT-T) | IPsec only |
 
 ## Docker Network
 
@@ -65,28 +104,31 @@ docker run -d --name socksvpn --network mynet \
     --device=/dev/ppp \
     -p 1701:1701/udp \
     -e SOCKS5_HOST=socks5 \
-    -e SOCKS5_PORT=1080 \
-    -e VPN_USER=myuser \
-    -e VPN_PASS=mypassword \
+    -e SOCKS5_PORT=<1080> \
+    -e VPN_USER=<vpn_user> \
+    -e VPN_PASS=<vpn_password> \
     linfn/socksvpn
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Docker Container                    │
-│                                                      │
-│  xl2tpd (UDP 1701)                                   │
-│      │                                               │
-│      ▼                                               │
-│  ppp0 (VPN client session)                           │
-│      │                                               │
-│      ├─ private IP ─▶ fwmark ─▶ main table ─▶ eth0   │
-│      │                                               │
-│      └─ public IP  ─▶ vpn table ─▶ tun0 ─▶ tun2socks │
-│                                                      │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Docker Container                        │
+│                                                           │
+│  [strongSwan]  ← IPsec (optional, when IPSEC_PSK is set)  │
+│      │                                                    │
+│      ▼                                                    │
+│  xl2tpd (UDP 1701)                                        │
+│      │                                                    │
+│      ▼                                                    │
+│  ppp0 (VPN client session)                                │
+│      │                                                    │
+│      ├─ private IP ─▶ fwmark ─▶ main table ─▶ eth0        │
+│      │                                                    │
+│      └─ public IP  ─▶ vpn table ─▶ tun0 ─▶ tun2socks     │
+│                                                           │
+└──────────────────────────────────────────────────────────┘
 ```
 
 - iptables mangle marks packets destined for private IPs (fwmark 0x1337)

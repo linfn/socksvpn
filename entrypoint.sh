@@ -15,12 +15,14 @@ VPN_DNS1="${VPN_DNS1:-8.8.8.8}"
 VPN_DNS2="${VPN_DNS2:-8.8.4.4}"
 VPN_TABLE_ID="${VPN_TABLE_ID:-100}"
 TUN2SOCKS_LOGLEVEL="${TUN2SOCKS_LOGLEVEL:-warn}"
+IPSEC_PSK="${IPSEC_PSK:-}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS5 proxy: ${SOCKS5_HOST}:${SOCKS5_PORT}"
 echo "VPN user: ${VPN_USER}"
 echo "VPN IP range: ${VPN_IP_RANGE}"
 echo "VPN local IP: ${VPN_LOCAL_IP}"
+echo "IPsec: $([ -n "${IPSEC_PSK}" ] && echo "enabled" || echo "disabled")"
 
 # ============================================================
 # Generate xl2tpd.conf
@@ -72,6 +74,61 @@ debug
 logfd 1
 EOF
 echo "[+] PPP options generated"
+
+# ============================================================
+# IPsec (strongSwan) — only when IPSEC_PSK is set
+# ============================================================
+if [ -n "${IPSEC_PSK}" ]; then
+    echo "[+] IPsec enabled, generating strongSwan config..."
+
+    cat > /etc/ipsec.conf <<EOF
+config setup
+    uniqueids=no
+
+conn %default
+    keyingtries=5
+    dpddelay=30
+    dpdtimeout=120
+    dpdaction=clear
+    ike=aes256-sha256-modp2048,aes128-sha256-modp2048,aes256-sha1-modp2048,aes128-sha1-modp2048!
+    esp=aes256-sha256,aes128-sha256,aes256-sha1,aes128-sha1!
+
+conn l2tp-ipsec
+    authby=secret
+    auto=add
+    keyingtries=3
+    rekey=no
+    ikelifetime=8h
+    lifetime=1h
+    type=transport
+    left=%any
+    leftprotoport=udp/1701
+    right=%any
+    rightprotoport=udp/%any
+EOF
+
+    cat > /etc/ipsec.secrets <<EOF
+%any %any : PSK "${IPSEC_PSK}"
+EOF
+    chmod 600 /etc/ipsec.secrets
+
+    cat > /etc/strongswan.conf <<EOF
+charon {
+    load_modular = yes
+    i_dont_care_about_security_and_use_aggressive_mode_psk = yes
+    compress = yes
+    plugins {
+        duplicheck {
+            enable = no
+        }
+        include strongswan.d/charon/*.conf
+    }
+}
+EOF
+    echo "[+] strongSwan config generated"
+else
+    echo "[+] IPsec disabled (IPSEC_PSK not set), running in plain L2TP mode"
+fi
 
 # ============================================================
 # Define VPN routing table
@@ -160,6 +217,17 @@ fi
 mkdir -p /var/run/xl2tpd
 
 # ============================================================
+# Start strongSwan (IPsec)
+# ============================================================
+if [ -n "${IPSEC_PSK}" ]; then
+    echo "[+] Starting strongSwan..."
+    ipsec start
+    sleep 2
+    ipsec status || true
+    echo "[+] strongSwan started"
+fi
+
+# ============================================================
 # Start tun2socks
 # ============================================================
 echo "[+] Starting tun2socks..."
@@ -180,6 +248,12 @@ iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
 # NAT: VPN client to local/Docker network (so replies route back via container)
 VPN_SUBNET="${VPN_LOCAL_IP%.*}.0/24"
 iptables -t nat -A POSTROUTING -s ${VPN_SUBNET} -o eth0 -j MASQUERADE
+# IPsec iptables rules
+if [ -n "${IPSEC_PSK}" ]; then
+    iptables -A INPUT -p udp --dport 500 -j ACCEPT
+    iptables -A INPUT -p udp --dport 4500 -j ACCEPT
+    iptables -A INPUT -p esp -j ACCEPT
+fi
 echo "[+] tun2socks started (PID: $TUN2SOCKS_PID), tun0 UP, NAT configured"
 
 # ============================================================
@@ -190,16 +264,5 @@ xl2tpd -D &
 XL2TPD_PID=$!
 echo "[+] xl2tpd started (PID: $XL2TPD_PID)"
 echo "=== VPN Server is running, waiting for connections on UDP 1701 ==="
-
-# ============================================================
-# Signal handling: kill child processes on exit
-# iptables/route rules are in container namespace, auto-destroyed on exit
-# ============================================================
-cleanup() {
-    echo "[!] Shutting down..."
-    kill $XL2TPD_PID $TUN2SOCKS_PID 2>/dev/null || true
-    exit 0
-}
-trap cleanup SIGTERM SIGINT
 
 wait $XL2TPD_PID

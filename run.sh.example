@@ -1,18 +1,22 @@
 #!/bin/bash
 
-docker rm -f socksvpn > /dev/null 2>&1 || true
+# 启用 IPsec 时，添加以下端口和环境变量:
+#   -p 500:500/udp \
+#   -p 4500:4500/udp \
+#   -e IPSEC_PSK=<your_pre_shared_key> \
+
 docker run --name socksvpn -d \
     --init \
     --restart=always \
-    --network your_network \
+    --network <your_network> \
     --cap-add=NET_ADMIN \
     --device=/dev/net/tun \
     --device=/dev/ppp \
     --log-opt max-size=10m \
     --log-opt max-file=3 \
     -p 1701:1701/udp \
-    -e SOCKS5_HOST=socks5_proxy \
-    -e SOCKS5_PORT=7890 \
-    -e VPN_USER=vpnuser \
-    -e VPN_PASS=your_password \
+    -e SOCKS5_HOST=<socks5_proxy> \
+    -e SOCKS5_PORT=<7890> \
+    -e VPN_USER=<vpnuser> \
+    -e VPN_PASS=<your_password> \
     linfn/socksvpn

@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ppp \
     iproute2 \
     iptables \
+    strongswan \
     curl \
     ca-certificates \
     unzip \
@@ -26,6 +27,6 @@ RUN ARCH=$TARGETARCH; SUFFIX=""; \
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 1701/udp
+EXPOSE 1701/udp 500/udp 4500/udp
 
 ENTRYPOINT ["/entrypoint.sh"]
