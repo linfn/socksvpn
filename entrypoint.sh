@@ -85,7 +85,7 @@ if [ -n "${IPSEC_PSK}" ]; then
 
     cat > /etc/ipsec.conf <<EOF
 config setup
-    uniqueids=no
+    uniqueids=replace
 
 conn %default
     keyingtries=5
