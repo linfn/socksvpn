@@ -242,6 +242,8 @@ ip addr add 198.18.0.1/16 dev tun0 2>/dev/null || true
 # Allow forwarding from ppp+ to tun0 (FORWARD chain default is DROP on many hosts)
 iptables -A FORWARD -i ppp+ -o tun0 -j ACCEPT
 iptables -A FORWARD -i tun0 -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT
+# TCP MSS clamping: avoid fragmentation across PPP/L2TP/IPsec encapsulation
+iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
 
 # NAT: tun0 outbound (SOCKS proxy traffic)
 iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
