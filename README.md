@@ -1,9 +1,9 @@
 # socksvpn
 
-L2TP VPN Server that transparently forwards all client traffic through an external SOCKS5 proxy via [tun2socks](https://github.com/xjasonlyu/tun2socks). Supports both plain L2TP and L2TP/IPsec modes.
+L2TP VPN Server that transparently forwards all client traffic through an external SOCKS5 proxy via [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel). Supports both plain L2TP and L2TP/IPsec modes.
 
 ```
-VPN Client ──L2TP/IPsec──▶ strongSwan + xl2tpd ──ppp0──▶ Policy Routing ──tun0──▶ tun2socks ──▶ SOCKS5 Proxy ──▶ Internet
+VPN Client ──L2TP/IPsec──▶ strongSwan + xl2tpd ──ppp0──▶ Policy Routing ──tun0──▶ hev-socks5-tunnel ──▶ SOCKS5 Proxy ──▶ Internet
 ```
 
 - Public IP traffic exits through the SOCKS5 proxy
@@ -63,7 +63,7 @@ docker run -d --name socksvpn \
 | `VPN_DNS1` | `8.8.8.8` | Primary DNS |
 | `VPN_DNS2` | `8.8.4.4` | Secondary DNS |
 | `VPN_TABLE_ID` | `100` | Policy routing table ID |
-| `TUN2SOCKS_LOGLEVEL` | `warn` | tun2socks log level (debug/info/warn/error) |
+| `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 | `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
 
 ## Client Compatibility
@@ -126,7 +126,7 @@ docker run -d --name socksvpn --network mynet \
 │      │                                                    │
 │      ├─ private IP ─▶ fwmark ─▶ main table ─▶ eth0        │
 │      │                                                    │
-│      └─ public IP  ─▶ vpn table ─▶ tun0 ─▶ tun2socks     │
+│      └─ public IP  ─▶ vpn table ─▶ tun0 ─▶ hev-socks5-tunnel     │
 │                                                           │
 └──────────────────────────────────────────────────────────┘
 ```

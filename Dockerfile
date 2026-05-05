@@ -8,21 +8,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     strongswan \
     curl \
     ca-certificates \
-    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install tun2socks
-ARG TUN2SOCKS_VERSION=v2.6.0
+# Install hev-socks5-tunnel
+ARG HEV_SOCKS5_TUNNEL_VERSION=2.14.4
 ARG TARGETARCH
-RUN ARCH=$TARGETARCH; SUFFIX=""; \
-    if [ "$ARCH" = "arm" ]; then ARCH=armv7; fi; \
-    if [ "$ARCH" = "amd64" ]; then SUFFIX="-v3"; fi; \
-    curl -fsSL -o /tmp/tun2socks.zip \
-    "https://github.com/xjasonlyu/tun2socks/releases/download/${TUN2SOCKS_VERSION}/tun2socks-linux-${ARCH}${SUFFIX}.zip" \
-    && unzip /tmp/tun2socks.zip -d /usr/local/bin/ \
-    && mv /usr/local/bin/tun2socks-linux-${ARCH}${SUFFIX} /usr/local/bin/tun2socks \
-    && chmod +x /usr/local/bin/tun2socks \
-    && rm /tmp/tun2socks.zip
+RUN ARCH=$TARGETARCH; \
+    if [ "$ARCH" = "amd64" ]; then ARCH=x86_64; elif [ "$ARCH" = "arm" ]; then ARCH=arm32v7; fi; \
+    curl -fsSL -o /usr/local/bin/hev-socks5-tunnel \
+    "https://github.com/heiher/hev-socks5-tunnel/releases/download/${HEV_SOCKS5_TUNNEL_VERSION}/hev-socks5-tunnel-linux-${ARCH}" \
+    && chmod +x /usr/local/bin/hev-socks5-tunnel
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

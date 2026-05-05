@@ -230,16 +230,36 @@ if [ -n "${IPSEC_PSK}" ]; then
 fi
 
 # ============================================================
-# Start tun2socks
+# Generate hev-socks5-tunnel config
 # ============================================================
-echo "[+] Starting tun2socks..."
-tun2socks -device tun0 -proxy "socks5://${SOCKS_HOST}:${SOCKS_PORT}" -loglevel ${TUN2SOCKS_LOGLEVEL} &
-TUN2SOCKS_PID=$!
+cat > /etc/hev-socks5-tunnel.yaml <<EOF
+tunnel:
+  name: tun0
+  mtu: 1400
+  ipv4: 198.18.0.1
+  multi-queue: false
+
+socks5:
+  port: ${SOCKS_PORT}
+  address: ${SOCKS_HOST}
+  udp: 'udp'
+
+misc:
+  log-level: ${TUN2SOCKS_LOGLEVEL}
+  log-file: stdout
+EOF
+echo "[+] hev-socks5-tunnel config generated"
+
+# ============================================================
+# Start hev-socks5-tunnel
+# ============================================================
+echo "[+] Starting hev-socks5-tunnel..."
+hev-socks5-tunnel /etc/hev-socks5-tunnel.yaml &
+HEV_PID=$!
 
 # Wait for tun0 to appear
 for i in $(seq 1 10); do ip link show tun0 &>/dev/null && break; sleep 0.5; done
 ip link set tun0 up
-ip addr add 198.18.0.1/16 dev tun0 2>/dev/null || true
 
 # Allow forwarding from ppp+ to tun0 (FORWARD chain default is DROP on many hosts)
 iptables -A FORWARD -i ppp+ -o tun0 -j ACCEPT
@@ -258,7 +278,7 @@ if [ -n "${IPSEC_PSK}" ]; then
     iptables -A INPUT -p udp --dport 4500 -j ACCEPT
     iptables -A INPUT -p esp -j ACCEPT
 fi
-echo "[+] tun2socks started (PID: $TUN2SOCKS_PID), tun0 UP, NAT configured"
+echo "[+] hev-socks5-tunnel started (PID: $HEV_PID), tun0 UP, NAT configured"
 
 # ============================================================
 # Start xl2tpd
