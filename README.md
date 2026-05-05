@@ -61,8 +61,8 @@ docker run -d --name socksvpn \
 | `VPN_PASS` | `vpnpass` | VPN password |
 | `VPN_DNS1` | `8.8.8.8` | Primary DNS |
 | `VPN_DNS2` | `8.8.4.4` | Secondary DNS |
-| `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 | `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
+| `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 
 ## Client Compatibility
 

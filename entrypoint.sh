@@ -227,13 +227,20 @@ if [ -n "${IPSEC_PSK}" ]; then
     echo "[+] Starting strongSwan..."
     ipsec start
     sleep 2
+    CHARON_PID=$(cat /var/run/charon.pid 2>/dev/null || echo "")
     ipsec status || true
-    echo "[+] strongSwan started"
+    echo "[+] strongSwan started (charon PID: $CHARON_PID)"
 fi
 
 # ============================================================
 # Generate hev-socks5-tunnel config
 # ============================================================
+SOCKS5_AUTH=""
+if [ -n "${SOCKS_USER}" ]; then
+    SOCKS5_AUTH="  username: '${SOCKS_USER}'
+  password: '${SOCKS_PASS}'"
+fi
+
 cat > /etc/hev-socks5-tunnel.yaml <<EOF
 tunnel:
   name: tun0
@@ -245,16 +252,8 @@ socks5:
   port: ${SOCKS_PORT}
   address: ${SOCKS_HOST}
   udp: 'udp'
-EOF
+${SOCKS5_AUTH}
 
-if [ -n "${SOCKS_USER}" ]; then
-    cat >> /etc/hev-socks5-tunnel.yaml <<EOF
-  username: '${SOCKS_USER}'
-  password: '${SOCKS_PASS}'
-EOF
-fi
-
-cat >> /etc/hev-socks5-tunnel.yaml <<EOF
 misc:
   log-level: ${TUN2SOCKS_LOGLEVEL}
   log-file: stdout
@@ -300,4 +299,24 @@ XL2TPD_PID=$!
 echo "[+] xl2tpd started (PID: $XL2TPD_PID)"
 echo "=== VPN Server is running, waiting for connections on UDP 1701 ==="
 
-wait $XL2TPD_PID
+shutdown() {
+    echo "[!] Shutting down..."
+    kill "$HEV_PID" "$XL2TPD_PID" 2>/dev/null || true
+    [ -n "$CHARON_PID" ] && kill -0 "$CHARON_PID" 2>/dev/null && kill "$CHARON_PID" 2>/dev/null || true
+    wait
+    exit 0
+}
+trap shutdown SIGTERM SIGINT USR1
+
+# Monitor charon (not a child of this shell, can't use wait -n)
+if [ -n "$CHARON_PID" ]; then
+    (
+        while kill -0 "$CHARON_PID" 2>/dev/null; do sleep 5; done
+        echo "[!] charon exited"
+        kill -USR1 $$
+    ) &
+fi
+
+wait -n $HEV_PID $XL2TPD_PID
+echo "[!] A critical process exited, shutting down..."
+shutdown
