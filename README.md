@@ -55,14 +55,12 @@ docker run -d --name socksvpn \
 |---|---|---|
 | `SOCKS_HOST` | `127.0.0.1` | SOCKS proxy host |
 | `SOCKS_PORT` | `1080` | SOCKS proxy port |
+| `SOCKS_USER` | *(empty)* | SOCKS5 auth username (optional) |
+| `SOCKS_PASS` | *(empty)* | SOCKS5 auth password (optional) |
 | `VPN_USER` | `vpnuser` | VPN username |
 | `VPN_PASS` | `vpnpass` | VPN password |
-| `VPN_SERVER_NAME` | `l2tpd` | PPP auth server name |
-| `VPN_LOCAL_IP` | `10.77.77.1` | VPN server IP |
-| `VPN_IP_RANGE` | `10.77.77.10-10.77.77.100` | Client IP address pool |
 | `VPN_DNS1` | `8.8.8.8` | Primary DNS |
 | `VPN_DNS2` | `8.8.4.4` | Secondary DNS |
-| `VPN_TABLE_ID` | `100` | Policy routing table ID |
 | `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 | `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
 

@@ -6,6 +6,8 @@ set -e
 # ============================================================
 SOCKS_HOST="${SOCKS_HOST:-127.0.0.1}"
 SOCKS_PORT="${SOCKS_PORT:-1080}"
+SOCKS_USER="${SOCKS_USER:-}"
+SOCKS_PASS="${SOCKS_PASS:-}"
 VPN_USER="${VPN_USER:-vpnuser}"
 VPN_PASS="${VPN_PASS:-vpnpass}"
 VPN_SERVER_NAME="${VPN_SERVER_NAME:-l2tpd}"
@@ -243,7 +245,16 @@ socks5:
   port: ${SOCKS_PORT}
   address: ${SOCKS_HOST}
   udp: 'udp'
+EOF
 
+if [ -n "${SOCKS_USER}" ]; then
+    cat >> /etc/hev-socks5-tunnel.yaml <<EOF
+  username: '${SOCKS_USER}'
+  password: '${SOCKS_PASS}'
+EOF
+fi
+
+cat >> /etc/hev-socks5-tunnel.yaml <<EOF
 misc:
   log-level: ${TUN2SOCKS_LOGLEVEL}
   log-file: stdout
