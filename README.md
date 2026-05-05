@@ -8,7 +8,7 @@ VPN Client ──[strongSwan]──L2TP──▶ xl2tpd ──ppp0──▶ Poli
 ```
 
 - Public IP traffic exits through the SOCKS5 proxy
-- Private IP traffic (10.x / 172.16-31.x / 192.168.x) routes directly
+- Private IP traffic (configurable via `BYPASS_CIDRS`) routes directly
 - DNS queries also go through the SOCKS5 proxy
 
 ## Quick Start
@@ -63,6 +63,8 @@ docker run -d --name socksvpn \
 | `VPN_DNS1` | `8.8.8.8` | Primary DNS |
 | `VPN_DNS2` | `8.8.4.4` | Secondary DNS |
 | `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
+| `BYPASS_CIDRS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8` | Comma-separated CIDRs that bypass SOCKS proxy |
+| `BYPASS_EXCLUDE` | *(empty)* | Comma-separated CIDRs excluded from bypass (go through SOCKS) |
 | `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 
 ## Client Compatibility
@@ -92,14 +94,14 @@ docker run -d --name socksvpn \
 │      ▼                                            │
 │  ppp0 (VPN client session)                        │
 │      │                                            │
-│      ├─ private IP ─▶ fwmark ─▶ main ─▶ eth0      │
+│      ├─ bypass CIDR ─▶ fwmark ─▶ main ─▶ eth0     │
 │      │                                            │
-│      └─ public IP ─▶ vpn table ─▶ tun2socks       │
+│      └─ other IP  ─▶ vpn table ─▶ tun2socks       │
 │                                                   │
 └───────────────────────────────────────────────────┘
 ```
 
-- iptables mangle marks packets destined for private IPs (fwmark 0x1337)
+- iptables mangle marks packets destined for bypass CIDRs (fwmark 0x1337)
 - Policy routing: fwmark rule (priority 100) takes precedence over iif rule (priority 200)
 - All rules live in the container's network namespace — no side effects on the host
 

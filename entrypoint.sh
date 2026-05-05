@@ -18,6 +18,8 @@ VPN_DNS2="${VPN_DNS2:-8.8.4.4}"
 VPN_TABLE_ID="${VPN_TABLE_ID:-100}"
 TUN2SOCKS_LOGLEVEL="${TUN2SOCKS_LOGLEVEL:-warn}"
 IPSEC_PSK="${IPSEC_PSK:-}"
+BYPASS_CIDRS="${BYPASS_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8}"
+BYPASS_EXCLUDE="${BYPASS_EXCLUDE:-}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS proxy: ${SOCKS_HOST}:${SOCKS_PORT}"
@@ -153,22 +155,36 @@ IFACE="\$1"
 LOCAL_IP="\$4"
 REMOTE_IP="\$5"
 
+cidr_to_range() {
+    local ip mask bits host_max
+    IFS='/' read -r ip mask <<< "\$1"
+    local a b c d
+    IFS='.' read -r a b c d <<< "\$ip"
+    local num=\$(( (a << 24) + (b << 16) + (c << 8) + d ))
+    bits=\$(( 0xFFFFFFFF << (32 - mask) & 0xFFFFFFFF ))
+    local start=\$(( num & bits ))
+    host_max=\$(( (1 << (32 - mask)) - 1 ))
+    local end=\$(( start | host_max ))
+    echo "\$(( (start >> 24) & 0xFF )).\$(( (start >> 16) & 0xFF )).\$(( (start >> 8) & 0xFF )).\$(( start & 0xFF ))-\$(( (end >> 24) & 0xFF )).\$(( (end >> 16) & 0xFF )).\$(( (end >> 8) & 0xFF )).\$(( end & 0xFF ))"
+}
+
+# Build exclude args: -m iprange ! --dst-range START-END for each BYPASS_EXCLUDE
+EXCLUDE_ARGS=""
+for ex in ${BYPASS_EXCLUDE//,/ }; do
+    [ -z "\$ex" ] && continue
+    EXCLUDE_ARGS="\$EXCLUDE_ARGS -m iprange ! --dst-range \$(cidr_to_range "\$ex")"
+done
+
 # Clean up any stale rules first (loop to remove all duplicates)
 while ip rule del iif "\$IFACE" table $VPN_TABLE_ID 2>/dev/null; do :; done
 while ip rule del fwmark 0x1337 table main 2>/dev/null; do :; done
 ip route flush table $VPN_TABLE_ID 2>/dev/null || true
 
-# Remove stale iptables rules (safe to call even if they don't exist)
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 10.0.0.0/8 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 172.16.0.0/12 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 192.168.0.0/16 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 127.0.0.0/8 -j MARK --set-mark 0x1337 2>/dev/null || true
-
-# Add iptables mangle rules to mark private IP traffic
-iptables -t mangle -A PREROUTING -i "\$IFACE" -d 10.0.0.0/8 -j MARK --set-mark 0x1337
-iptables -t mangle -A PREROUTING -i "\$IFACE" -d 172.16.0.0/12 -j MARK --set-mark 0x1337
-iptables -t mangle -A PREROUTING -i "\$IFACE" -d 192.168.0.0/16 -j MARK --set-mark 0x1337
-iptables -t mangle -A PREROUTING -i "\$IFACE" -d 127.0.0.0/8 -j MARK --set-mark 0x1337
+# Mark bypass CIDRs (direct route, skip SOCKS proxy)
+for cidr in ${BYPASS_CIDRS//,/ }; do
+    iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
+    iptables -t mangle -A PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337
+done
 
 # Policy routing (fwmark must have higher priority than iif)
 ip rule add fwmark 0x1337 table main priority 100
@@ -183,15 +199,34 @@ cat > /etc/ppp/ip-down.d/01-route-vpn <<SCRIPT
 #!/bin/bash
 IFACE="\$1"
 
+cidr_to_range() {
+    local ip mask bits host_max
+    IFS='/' read -r ip mask <<< "\$1"
+    local a b c d
+    IFS='.' read -r a b c d <<< "\$ip"
+    local num=\$(( (a << 24) + (b << 16) + (c << 8) + d ))
+    bits=\$(( 0xFFFFFFFF << (32 - mask) & 0xFFFFFFFF ))
+    local start=\$(( num & bits ))
+    host_max=\$(( (1 << (32 - mask)) - 1 ))
+    local end=\$(( start | host_max ))
+    echo "\$(( (start >> 24) & 0xFF )).\$(( (start >> 16) & 0xFF )).\$(( (start >> 8) & 0xFF )).\$(( start & 0xFF ))-\$(( (end >> 24) & 0xFF )).\$(( (end >> 16) & 0xFF )).\$(( (end >> 8) & 0xFF )).\$(( end & 0xFF ))"
+}
+
+# Build exclude args: -m iprange ! --dst-range START-END for each BYPASS_EXCLUDE
+EXCLUDE_ARGS=""
+for ex in ${BYPASS_EXCLUDE//,/ }; do
+    [ -z "\$ex" ] && continue
+    EXCLUDE_ARGS="\$EXCLUDE_ARGS -m iprange ! --dst-range \$(cidr_to_range "\$ex")"
+done
+
 # Remove policy routing rules
 ip rule del iif "\$IFACE" table $VPN_TABLE_ID 2>/dev/null || true
 ip rule del fwmark 0x1337 table main 2>/dev/null || true
 
-# Remove iptables mangle rules for this interface
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 10.0.0.0/8 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 172.16.0.0/12 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 192.168.0.0/16 -j MARK --set-mark 0x1337 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -d 127.0.0.0/8 -j MARK --set-mark 0x1337 2>/dev/null || true
+# Remove bypass CIDRs iptables rules
+for cidr in ${BYPASS_CIDRS//,/ }; do
+    iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
+done
 
 # Flush vpn routing table
 ip route flush table $VPN_TABLE_ID 2>/dev/null || true
