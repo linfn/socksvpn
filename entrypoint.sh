@@ -187,9 +187,10 @@ for cidr in ${BYPASS_CIDRS//,/ }; do
 done
 
 # Policy routing (fwmark must have higher priority than iif)
-ip rule add fwmark 0x1337 table main priority 100
-ip rule add iif "\$IFACE" table $VPN_TABLE_ID priority 200
-ip route add default dev tun0 table $VPN_TABLE_ID
+# Use || true for idempotency — rules may already exist on reconnect
+ip rule add fwmark 0x1337 table main priority 100 2>/dev/null || true
+ip rule add iif "\$IFACE" table $VPN_TABLE_ID priority 200 2>/dev/null || true
+ip route add default dev tun0 table $VPN_TABLE_ID 2>/dev/null || true
 
 echo "[ip-up] \$IFACE: local=\$LOCAL_IP remote=\$REMOTE_IP, routing configured"
 SCRIPT
@@ -219,19 +220,13 @@ for ex in ${BYPASS_EXCLUDE//,/ }; do
     EXCLUDE_ARGS="\$EXCLUDE_ARGS -m iprange ! --dst-range \$(cidr_to_range "\$ex")"
 done
 
-# Remove policy routing rules
-ip rule del iif "\$IFACE" table $VPN_TABLE_ID 2>/dev/null || true
-ip rule del fwmark 0x1337 table main 2>/dev/null || true
-
-# Remove bypass CIDRs iptables rules
+# Only clean up mangle rules (interface-bound, safe to remove)
+# ip rules and vpn table are global — let ip-up handle them
 for cidr in ${BYPASS_CIDRS//,/ }; do
     iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
 done
 
-# Flush vpn routing table
-ip route flush table $VPN_TABLE_ID 2>/dev/null || true
-
-echo "[ip-down] \$IFACE: routing cleaned up"
+echo "[ip-down] \$IFACE: mangle rules cleaned up"
 SCRIPT
 chmod +x /etc/ppp/ip-down.d/01-route-vpn
 
