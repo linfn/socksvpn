@@ -9,7 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -f /etc/xl2tpd/xl2tpd.conf
+    && rm -f /etc/xl2tpd/xl2tpd.conf \
+             /etc/ppp/chap-secrets \
+             /etc/ipsec.conf \
+             /etc/ipsec.secrets \
+             /etc/strongswan.conf
 
 # Install hev-socks5-tunnel
 ARG HEV_SOCKS5_TUNNEL_VERSION=2.14.4
