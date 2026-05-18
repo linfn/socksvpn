@@ -67,6 +67,19 @@ docker run -d --name socksvpn \
 | `BYPASS_EXCLUDE` | *(empty)* | Comma-separated CIDRs excluded from bypass (go through SOCKS) |
 | `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 
+## Custom Config
+
+All config files can be overridden by mounting to their default paths. For example, to customize hev-socks5-tunnel:
+
+```bash
+docker run -d --name socksvpn \
+    ...
+    -v /path/to/hev-socks5-tunnel.yaml:/etc/hev-socks5-tunnel.yaml \
+    linfn/socksvpn
+```
+
+See [hev-socks5-tunnel config](https://github.com/heiher/hev-socks5-tunnel#configuration) for all available options.
+
 ## Client Compatibility
 
 | Platform | Plain L2TP | L2TP/IPsec |

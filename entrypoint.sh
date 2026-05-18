@@ -20,6 +20,7 @@ TUN2SOCKS_LOGLEVEL="${TUN2SOCKS_LOGLEVEL:-warn}"
 IPSEC_PSK="${IPSEC_PSK:-}"
 BYPASS_CIDRS="${BYPASS_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8}"
 BYPASS_EXCLUDE="${BYPASS_EXCLUDE:-}"
+VPN_MTU="${VPN_MTU:-$([ -n "${IPSEC_PSK}" ] && echo 1350 || echo 1400)}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS proxy: ${SOCKS_HOST}:${SOCKS_PORT}"
@@ -31,7 +32,8 @@ echo "IPsec: $([ -n "${IPSEC_PSK}" ] && echo "enabled" || echo "disabled")"
 # ============================================================
 # Generate xl2tpd.conf
 # ============================================================
-cat > /etc/xl2tpd/xl2tpd.conf <<EOF
+if [ ! -f /etc/xl2tpd/xl2tpd.conf ]; then
+    cat > /etc/xl2tpd/xl2tpd.conf <<EOF
 [global]
 port = 1701
 
@@ -42,25 +44,33 @@ require chap = yes
 refuse pap = yes
 require authentication = no
 name = ${VPN_SERVER_NAME}
-ppp debug = yes
 pppoptfile = /etc/ppp/options.xl2tpd
 length bit = yes
 EOF
-echo "[+] xl2tpd.conf generated"
+    echo "[+] xl2tpd.conf generated"
+else
+    echo "[+] Using custom xl2tpd.conf"
+fi
 
 # ============================================================
 # Generate chap-secrets
 # ============================================================
-cat > /etc/ppp/chap-secrets <<EOF
+if [ ! -f /etc/ppp/chap-secrets ]; then
+    cat > /etc/ppp/chap-secrets <<EOF
 ${VPN_USER} ${VPN_SERVER_NAME} ${VPN_PASS} *
 EOF
-chmod 600 /etc/ppp/chap-secrets
-echo "[+] chap-secrets generated"
+    chmod 600 /etc/ppp/chap-secrets
+    echo "[+] chap-secrets generated"
+else
+    chmod 600 /etc/ppp/chap-secrets
+    echo "[+] Using custom chap-secrets"
+fi
 
 # ============================================================
 # Generate PPP options
 # ============================================================
-cat > /etc/ppp/options.xl2tpd <<EOF
+if [ ! -f /etc/ppp/options.xl2tpd ]; then
+    cat > /etc/ppp/options.xl2tpd <<EOF
 ipcp-accept-local
 ipcp-accept-remote
 noauth
@@ -69,17 +79,22 @@ require-chap
 ms-dns ${VPN_DNS1}
 ms-dns ${VPN_DNS2}
 asyncmap 0
-mtu 1400
-mru 1400
+mtu ${VPN_MTU}
+mru ${VPN_MTU}
 nodefaultroute
 proxyarp
-lcp-echo-interval 30
+noccp
+novj
+nopcomp
+noaccomp
+lcp-echo-interval 15
 lcp-echo-failure 3
-connect-delay 5000
-debug
 logfd 1
 EOF
-echo "[+] PPP options generated"
+    echo "[+] PPP options generated"
+else
+    echo "[+] Using custom PPP options"
+fi
 
 # ============================================================
 # IPsec (strongSwan) — only when IPSEC_PSK is set
@@ -87,7 +102,8 @@ echo "[+] PPP options generated"
 if [ -n "${IPSEC_PSK}" ]; then
     echo "[+] IPsec enabled, generating strongSwan config..."
 
-    cat > /etc/ipsec.conf <<EOF
+    if [ ! -f /etc/ipsec.conf ]; then
+        cat > /etc/ipsec.conf <<EOF
 config setup
     uniqueids=replace
 
@@ -112,13 +128,22 @@ conn l2tp-ipsec
     right=%any
     rightprotoport=udp/%any
 EOF
+    else
+        echo "[+] Using custom ipsec.conf"
+    fi
 
-    cat > /etc/ipsec.secrets <<EOF
+    if [ ! -f /etc/ipsec.secrets ]; then
+        cat > /etc/ipsec.secrets <<EOF
 %any %any : PSK "${IPSEC_PSK}"
 EOF
-    chmod 600 /etc/ipsec.secrets
+        chmod 600 /etc/ipsec.secrets
+    else
+        chmod 600 /etc/ipsec.secrets
+        echo "[+] Using custom ipsec.secrets"
+    fi
 
-    cat > /etc/strongswan.conf <<EOF
+    if [ ! -f /etc/strongswan.conf ]; then
+        cat > /etc/strongswan.conf <<EOF
 charon {
     load_modular = yes
     i_dont_care_about_security_and_use_aggressive_mode_psk = yes
@@ -131,6 +156,9 @@ charon {
     }
 }
 EOF
+    else
+        echo "[+] Using custom strongswan.conf"
+    fi
     echo "[+] strongSwan config generated"
 else
     echo "[+] IPsec disabled (IPSEC_PSK not set), running in plain L2TP mode"
@@ -271,24 +299,31 @@ if [ -n "${SOCKS_USER}" ]; then
   password: '${SOCKS_PASS}'"
 fi
 
-cat > /etc/hev-socks5-tunnel.yaml <<EOF
+TUN2SOCKS_CONF="/etc/hev-socks5-tunnel.yaml"
+if [ ! -f "$TUN2SOCKS_CONF" ]; then
+    cat > "$TUN2SOCKS_CONF" <<EOF
 tunnel:
   name: tun0
-  mtu: 1400
+  mtu: ${VPN_MTU}
   ipv4: 198.18.0.1
-  multi-queue: false
+  multi-queue: true
 
 socks5:
   port: ${SOCKS_PORT}
   address: ${SOCKS_HOST}
   udp: 'udp'
+  pipeline: true
+  tcp-fastopen: true
 ${SOCKS5_AUTH}
 
 misc:
   log-level: ${TUN2SOCKS_LOGLEVEL}
   log-file: stdout
 EOF
-echo "[+] hev-socks5-tunnel config generated"
+    echo "[+] hev-socks5-tunnel config generated"
+else
+    echo "[+] Using custom hev-socks5-tunnel config"
+fi
 
 # ============================================================
 # Start hev-socks5-tunnel
@@ -300,6 +335,7 @@ HEV_PID=$!
 # Wait for tun0 to appear
 for i in $(seq 1 10); do ip link show tun0 &>/dev/null && break; sleep 0.5; done
 ip link set tun0 up
+ip link set tun0 txqueuelen 2000
 
 # Allow forwarding from ppp+ to tun0 (FORWARD chain default is DROP on many hosts)
 iptables -A FORWARD -i ppp+ -o tun0 -j ACCEPT
