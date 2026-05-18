@@ -204,20 +204,29 @@ for ex in ${BYPASS_EXCLUDE//,/ }; do
 done
 
 # Clean up any stale rules first (loop to remove all duplicates)
+while ip rule del fwmark 0x1338 table $VPN_TABLE_ID 2>/dev/null; do :; done
 while ip rule del iif "\$IFACE" table $VPN_TABLE_ID 2>/dev/null; do :; done
-while ip rule del fwmark 0x1337 table main 2>/dev/null; do :; done
 ip route flush table $VPN_TABLE_ID 2>/dev/null || true
 
-# Mark bypass CIDRs (direct route, skip SOCKS proxy)
+# Mark bypass CIDRs with 0x1337 (direct route, skip SOCKS proxy)
+# 0x1337 is not used for routing — it's a guard flag for the 0x1338 rules below,
+# preventing bypass CIDR traffic from being sent through SOCKS proxy
 for cidr in ${BYPASS_CIDRS//,/ }; do
     iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
     iptables -t mangle -A PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337
 done
 
-# Policy routing (fwmark must have higher priority than iif)
-# Use || true for idempotency — rules may already exist on reconnect
-ip rule add fwmark 0x1337 table main priority 100 2>/dev/null || true
-ip rule add iif "\$IFACE" table $VPN_TABLE_ID priority 200 2>/dev/null || true
+# Mark TCP/UDP with 0x1338 for SOCKS proxy routing, skipping packets already
+# marked 0x1337 (bypass CIDRs). This two-step approach avoids combining
+# multiple iprange negations in a single rule.
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+iptables -t mangle -A PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338
+iptables -t mangle -A PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338
+
+# Policy routing: only TCP/UDP (fwmark 0x1338) goes through SOCKS proxy
+# Everything else (bypass CIDRs, ICMP, etc.) falls through to main table
+ip rule add fwmark 0x1338 table $VPN_TABLE_ID priority 150 2>/dev/null || true
 ip route add default dev tun0 table $VPN_TABLE_ID 2>/dev/null || true
 
 echo "[ip-up] \$IFACE: local=\$LOCAL_IP remote=\$REMOTE_IP, routing configured"
@@ -253,6 +262,8 @@ done
 for cidr in ${BYPASS_CIDRS//,/ }; do
     iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
 done
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
 
 echo "[ip-down] \$IFACE: mangle rules cleaned up"
 SCRIPT
