@@ -216,6 +216,10 @@ for cidr in ${BYPASS_CIDRS//,/ }; do
     iptables -t mangle -A PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337
 done
 
+# Bypass traceroute UDP packets (SOCKS5 can't relay TTL mechanism)
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK --set-mark 0x1337 2>/dev/null || true
+iptables -t mangle -A PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK --set-mark 0x1337
+
 # Mark TCP/UDP with 0x1338 for SOCKS proxy routing, skipping packets already
 # marked 0x1337 (bypass CIDRs). This two-step approach avoids combining
 # multiple iprange negations in a single rule.
@@ -262,6 +266,7 @@ done
 for cidr in ${BYPASS_CIDRS//,/ }; do
     iptables -t mangle -D PREROUTING -i "\$IFACE" -d "\$cidr" \$EXCLUDE_ARGS -j MARK --set-mark 0x1337 2>/dev/null || true
 done
+iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK --set-mark 0x1337 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
 
