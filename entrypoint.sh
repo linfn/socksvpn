@@ -333,9 +333,6 @@ socks5:
 ${SOCKS5_AUTH}
 
 misc:
-  connect-timeout: 15000
-  tcp-read-write-timeout: 120000
-  tcp-buffer-size: 131072
   log-level: ${TUN2SOCKS_LOGLEVEL}
   log-file: stdout
 EOF
