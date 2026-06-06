@@ -21,6 +21,7 @@ IPSEC_PSK="${IPSEC_PSK:-}"
 BYPASS_CIDRS="${BYPASS_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8}"
 BYPASS_EXCLUDE="${BYPASS_EXCLUDE:-}"
 VPN_MTU="${VPN_MTU:-$([ -n "${IPSEC_PSK}" ] && echo 1350 || echo 1400)}"
+UDP_RELAY="${UDP_RELAY:-1}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS proxy: ${SOCKS_HOST}:${SOCKS_PORT}"
@@ -224,9 +225,11 @@ iptables -t mangle -A PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK
 # marked 0x1337 (bypass CIDRs). This two-step approach avoids combining
 # multiple iprange negations in a single rule.
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
 iptables -t mangle -A PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338
-iptables -t mangle -A PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338
+if [ "${UDP_RELAY}" = "1" ]; then
+    iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+    iptables -t mangle -A PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338
+fi
 
 # Policy routing: only TCP/UDP (fwmark 0x1338) goes through SOCKS proxy
 # Everything else (bypass CIDRs, ICMP, etc.) falls through to main table
@@ -268,7 +271,9 @@ for cidr in ${BYPASS_CIDRS//,/ }; do
 done
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK --set-mark 0x1337 2>/dev/null || true
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
-iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+if [ "${UDP_RELAY}" = "1" ]; then
+    iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+fi
 
 echo "[ip-down] \$IFACE: mangle rules cleaned up"
 SCRIPT
