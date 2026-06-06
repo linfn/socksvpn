@@ -12,6 +12,7 @@ VPN_USER="${VPN_USER:-vpnuser}"
 VPN_PASS="${VPN_PASS:-vpnpass}"
 VPN_SERVER_NAME="${VPN_SERVER_NAME:-l2tpd}"
 VPN_LOCAL_IP="${VPN_LOCAL_IP:-10.77.77.1}"
+VPN_SUBNET="${VPN_LOCAL_IP%.*}.0/24"
 VPN_IP_RANGE="${VPN_IP_RANGE:-10.77.77.10-10.77.77.100}"
 VPN_DNS1="${VPN_DNS1:-8.8.8.8}"
 VPN_DNS2="${VPN_DNS2:-8.8.4.4}"
@@ -29,6 +30,34 @@ echo "VPN user: ${VPN_USER}"
 echo "VPN IP range: ${VPN_IP_RANGE}"
 echo "VPN local IP: ${VPN_LOCAL_IP}"
 echo "IPsec: $([ -n "${IPSEC_PSK}" ] && echo "enabled" || echo "disabled")"
+
+# Clean up global routing/iptables state (idempotent, safe to call multiple times)
+cleanup_rules() {
+    # Clean up ip rules and routing table
+    while ip rule del fwmark 0x1338 table $VPN_TABLE_ID 2>/dev/null; do :; done
+    ip route flush table $VPN_TABLE_ID 2>/dev/null || true
+
+    # Clean up iptables FORWARD rules
+    iptables -D FORWARD -i ppp+ -o tun0 -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i tun0 -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
+
+    # Clean up iptables mangle/MSS clamping
+    iptables -t mangle -D FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null || true
+
+    # Clean up iptables NAT rules
+    iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -D POSTROUTING -s ${VPN_SUBNET} -o eth0 -j MASQUERADE 2>/dev/null || true
+
+    # Clean up IPsec iptables rules
+    if [ -n "${IPSEC_PSK}" ]; then
+        iptables -D INPUT -p udp --dport 500 -j ACCEPT 2>/dev/null || true
+        iptables -D INPUT -p udp --dport 4500 -j ACCEPT 2>/dev/null || true
+        iptables -D INPUT -p esp -j ACCEPT 2>/dev/null || true
+    fi
+}
+
+# Clean up any residual state from previous ungraceful exit
+cleanup_rules
 
 # ============================================================
 # Generate xl2tpd.conf
@@ -367,7 +396,6 @@ iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-m
 # NAT: tun0 outbound (SOCKS proxy traffic)
 iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
 # NAT: VPN client to local/Docker network (so replies route back via container)
-VPN_SUBNET="${VPN_LOCAL_IP%.*}.0/24"
 iptables -t nat -A POSTROUTING -s ${VPN_SUBNET} -o eth0 -j MASQUERADE
 # IPsec iptables rules
 if [ -n "${IPSEC_PSK}" ]; then
@@ -390,6 +418,7 @@ shutdown() {
     echo "[!] Shutting down..."
     kill "$HEV_PID" "$XL2TPD_PID" 2>/dev/null || true
     [ -n "$CHARON_PID" ] && kill -0 "$CHARON_PID" 2>/dev/null && kill "$CHARON_PID" 2>/dev/null || true
+    cleanup_rules
     wait
     exit 0
 }
