@@ -65,6 +65,9 @@ docker run -d --name socksvpn \
 | `IPSEC_PSK` | *(empty)* | Set to enable L2TP/IPsec with this pre-shared key |
 | `BYPASS_CIDRS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8` | Comma-separated CIDRs that bypass SOCKS proxy |
 | `BYPASS_EXCLUDE` | *(empty)* | Comma-separated CIDRs excluded from bypass (go through SOCKS) |
+| `UDP_RELAY` | `1` | Relay UDP traffic through SOCKS; set to `0` to route UDP directly |
+| `DNS_HIJACK` | *(empty)* | Set to `1` to redirect client DNS queries to `VPN_DNS1` |
+| `REJECT_QUIC` | `0` | Set to `1` to reject client UDP/443 with ICMP port-unreachable for faster TCP fallback |
 | `TUN2SOCKS_LOGLEVEL` | `warn` | hev-socks5-tunnel log level (debug/info/warn/error) |
 
 ## Custom Config

@@ -23,6 +23,8 @@ BYPASS_CIDRS="${BYPASS_CIDRS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/
 BYPASS_EXCLUDE="${BYPASS_EXCLUDE:-}"
 VPN_MTU="${VPN_MTU:-$([ -n "${IPSEC_PSK}" ] && echo 1350 || echo 1400)}"
 UDP_RELAY="${UDP_RELAY:-1}"
+DNS_HIJACK="${DNS_HIJACK:-}"
+REJECT_QUIC="${REJECT_QUIC:-0}"
 
 echo "=== L2TP VPN Server with SOCKS5 Proxy ==="
 echo "SOCKS proxy: ${SOCKS_HOST}:${SOCKS_PORT}"
@@ -38,6 +40,7 @@ cleanup_rules() {
     ip route flush table $VPN_TABLE_ID 2>/dev/null || true
 
     # Clean up iptables FORWARD rules
+    iptables -D FORWARD -i ppp+ -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable 2>/dev/null || true
     iptables -D FORWARD -i ppp+ -o tun0 -j ACCEPT 2>/dev/null || true
     iptables -D FORWARD -i tun0 -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || true
 
@@ -265,6 +268,12 @@ fi
 ip rule add fwmark 0x1338 table $VPN_TABLE_ID priority 150 2>/dev/null || true
 ip route add default dev tun0 table $VPN_TABLE_ID 2>/dev/null || true
 
+# Hijack all DNS queries to configured DNS server
+if [ "${DNS_HIJACK}" = "1" ]; then
+    iptables -t nat -A PREROUTING -i "\$IFACE" -p udp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null || true
+    iptables -t nat -A PREROUTING -i "\$IFACE" -p tcp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null || true
+fi
+
 echo "[ip-up] \$IFACE: local=\$LOCAL_IP remote=\$REMOTE_IP, routing configured"
 SCRIPT
 chmod +x /etc/ppp/ip-up.d/01-route-vpn
@@ -388,6 +397,10 @@ ip link set tun0 up
 ip link set tun0 txqueuelen 2000
 
 # Allow forwarding from ppp+ to tun0 (FORWARD chain default is DROP on many hosts)
+if [ "${REJECT_QUIC}" = "1" ]; then
+    iptables -A FORWARD -i ppp+ -p udp --dport 443 -j REJECT --reject-with icmp-port-unreachable
+    echo "[+] QUIC rejection enabled (UDP/443 returns ICMP port-unreachable to VPN clients)"
+fi
 iptables -A FORWARD -i ppp+ -o tun0 -j ACCEPT
 iptables -A FORWARD -i tun0 -o ppp+ -m state --state RELATED,ESTABLISHED -j ACCEPT
 # TCP MSS clamping: avoid fragmentation across PPP/L2TP/IPsec encapsulation
