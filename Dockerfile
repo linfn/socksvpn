@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     strongswan \
     curl \
     ca-certificates \
+    tcpdump \
+    iputils-ping \
+    mtr-tiny \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/xl2tpd/xl2tpd.conf \
              /etc/ppp/chap-secrets \
