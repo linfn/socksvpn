@@ -50,6 +50,13 @@ cleanup_rules() {
     # Clean up iptables NAT rules
     iptables -t nat -D POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || true
     iptables -t nat -D POSTROUTING -s ${VPN_SUBNET} -o eth0 -j MASQUERADE 2>/dev/null || true
+    iptables -t nat -S PREROUTING | while IFS= read -r rule; do
+        case "$rule" in
+            *"-i ppp"*"-p udp"*"--dport 53"*"DNAT --to-destination ${VPN_DNS1}"*|*"-i ppp"*"-p tcp"*"--dport 53"*"DNAT --to-destination ${VPN_DNS1}"*)
+                iptables -t nat ${rule/-A PREROUTING/-D PREROUTING} 2>/dev/null || true
+                ;;
+        esac
+    done
 
     # Clean up IPsec iptables rules
     if [ -n "${IPSEC_PSK}" ]; then
@@ -270,6 +277,8 @@ ip route add default dev tun0 table $VPN_TABLE_ID 2>/dev/null || true
 
 # Hijack all DNS queries to configured DNS server
 if [ "${DNS_HIJACK}" = "1" ]; then
+    while iptables -t nat -D PREROUTING -i "\$IFACE" -p udp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null; do :; done
+    while iptables -t nat -D PREROUTING -i "\$IFACE" -p tcp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null; do :; done
     iptables -t nat -A PREROUTING -i "\$IFACE" -p udp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null || true
     iptables -t nat -A PREROUTING -i "\$IFACE" -p tcp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null || true
 fi
@@ -311,6 +320,10 @@ iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp --dport 33434:33534 -j MARK
 iptables -t mangle -D PREROUTING -i "\$IFACE" -p tcp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
 if [ "${UDP_RELAY}" = "1" ]; then
     iptables -t mangle -D PREROUTING -i "\$IFACE" -p udp -m mark ! --mark 0x1337 -j MARK --set-mark 0x1338 2>/dev/null || true
+fi
+if [ "${DNS_HIJACK}" = "1" ]; then
+    while iptables -t nat -D PREROUTING -i "\$IFACE" -p udp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null; do :; done
+    while iptables -t nat -D PREROUTING -i "\$IFACE" -p tcp --dport 53 -j DNAT --to-destination ${VPN_DNS1} 2>/dev/null; do :; done
 fi
 
 echo "[ip-down] \$IFACE: mangle rules cleaned up"
